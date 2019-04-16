@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-
-	//"strconv"
 	"strings"
 
 	"github.com/joho/godotenv"
@@ -37,9 +35,7 @@ func main() {
 		"case5"}
 
 	// Pack up the data for our message
-	//conf := config.New()
 	msgData := url.Values{}
-	//fmt.Println(conf.reciever)
 	reciever := os.Getenv("RECIPIENT_NUM")
 	sender := os.Getenv("TWIL_NUM")
 	msgData.Set("To", reciever)
