@@ -1,57 +1,39 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 
+	context "golang.org/x/net/context"
+	"google.golang.org/grpc"
+
+	notification "github.com/azziwarlock21/MajorProj/proto"
 	"github.com/joho/godotenv"
 )
 
-func init() {
-	// loads values from .env into the system
-	if err := godotenv.Load(); err != nil {
-		log.Print("No .env file found")
-	}
+const (
+	grpcAddress = ":8083"
+)
+
+type notificationServer struct {
 }
 
-func main() {
-	// Set account keys & information
-
+// rpc send method takes the message and the number to send and calls the API to send the message
+func (nc *notificationServer) Send(ctx context.Context, params *notification.Params) (*notification.Response, error) {
 	accountSid := os.Getenv("ACCOUNT_SID")
 	authToken := os.Getenv("AUTH_TOKEN")
-
+	sender := os.Getenv("TWIL_NUM")
 	urlStr := "https://api.twilio.com/2010-04-01/Accounts/" + accountSid + "/Messages.json"
 
-	// Create possible message bodies
-	alerts := []string{"We're good\n",
-		"Temperature is under its nominal value",
-		"Temperature is over its nominal value",
-		"case4",
-		"case5"}
-
-	// Pack up the data for our message
 	msgData := url.Values{}
-	reciever := os.Getenv("RECIPIENT_NUM")
-	sender := os.Getenv("TWIL_NUM")
-	msgData.Set("To", reciever)
-	msgData.Set("From", sender)
-
-	temp := 25
-	for temp >= 22 && temp <= 29 {
-		msgData.Set("Body", alerts[0])
-		break
-	}
-	if temp < 22 {
-		msgData.Set("Body", alerts[1])
-
-	} else if temp > 35 {
-		msgData.Set("Body", alerts[2])
-	}
+	msgData.Set("To", fmt.Sprintf("+%s", params.Reciever))
+	msgData.Set("From", fmt.Sprintf("+%s", sender))
+	msgData.Set("Body", params.Msg)
 
 	msgDataReader := *strings.NewReader(msgData.Encode())
 
@@ -64,14 +46,32 @@ func main() {
 
 	// Make HTTP POST request and return message SID
 	resp, _ := client.Do(req)
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		var data map[string]interface{}
-		decoder := json.NewDecoder(resp.Body)
-		err := decoder.Decode(&data)
-		if err == nil {
-			fmt.Println(data["sid"])
-		}
-	} else {
-		fmt.Println(resp.Status)
+	if resp.StatusCode == 200 || resp.StatusCode == 201 {
+		return &notification.Response{Success: true}, nil
+	}
+	return &notification.Response{Success: false}, nil
+}
+
+func init() {
+	// loads values from .env into the system
+	if err := godotenv.Load(); err != nil {
+		log.Print("No .env file found")
+		os.Exit(2)
+	}
+}
+
+func main() {
+	// Creating grpc server
+	grpcServer := grpc.NewServer()
+	notification.RegisterNotifyServer(grpcServer, &notificationServer{})
+	conn, err := net.Listen("tcp", grpcAddress)
+	if err != nil {
+		log.Fatalf("failed to create gRPC listener: %v\n", err)
+		os.Exit(2)
+	}
+	fmt.Printf("gRPC server started on port %s", grpcAddress)
+	if err := grpcServer.Serve(conn); err != nil {
+		log.Fatalf("failed to create gRPC serve: %v\n", err)
+		os.Exit(2)
 	}
 }
